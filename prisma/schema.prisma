@@ -8,12 +8,12 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
-  email       String   @unique
+  email       String    @unique
   password    String
   role        Role
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   auctions    Auction[] @relation("BuyerAuctions")
   bids        Bid[]     @relation("SupplierBids")
 }
@@ -48,10 +48,11 @@ model Bid {
   supplierId   String
   auction      Auction  @relation(fields: [auctionId], references: [id])
   auctionId    String
+
+  @@unique([supplierId, auctionId]) // ✅ Composite unique constraint
 }
 
 enum Role {
   BUYER
   SUPPLIER
 }
-
