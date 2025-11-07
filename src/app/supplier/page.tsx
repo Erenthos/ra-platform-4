@@ -12,26 +12,13 @@ export default function SupplierDashboard() {
   const [itemBids, setItemBids] = useState<any[]>([]);
   const [rank, setRank] = useState<number | null>(null);
   const [totalValue, setTotalValue] = useState(0);
+  const [rankings, setRankings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // 🔌 Initialize Socket.io
-  useEffect(() => {
-    socket = io(socketUrl);
-    socket.on("connect", () => console.log("🟢 Connected to Socket.io"));
-    socket.on("ranking_update", (rankings: any[]) => {
-      if (selectedAuction) {
-        const myRank = rankings.find(
-          (r) => r.supplierId === getDecodedUser()?.userId
-        );
-        setRank(myRank ? myRank.rank : null);
-      }
-    });
-    return () => socket.disconnect();
-  }, [selectedAuction]);
-
+  // Helper to decode JWT user info
   const getDecodedUser = () => {
     try {
       if (!token) return null;
@@ -42,6 +29,28 @@ export default function SupplierDashboard() {
     }
   };
 
+  // Initialize Socket.io
+  useEffect(() => {
+    socket = io(socketUrl, { transports: ["websocket"] });
+
+    socket.on("connect", () => console.log("🟢 Connected to Socket.io"));
+    socket.on("disconnect", () => console.log("🔴 Disconnected from Socket.io"));
+
+    // 🔁 Receive live ranking updates from backend
+    socket.on("ranking_update", (data: any) => {
+      if (selectedAuction && data.auctionId === selectedAuction.id) {
+        setRankings(data.rankings);
+        const myRank = data.rankings.find(
+          (r: any) => r.supplierId === getDecodedUser()?.userId
+        );
+        setRank(myRank ? myRank.rank : null);
+      }
+    });
+
+    return () => socket.disconnect();
+  }, [selectedAuction]);
+
+  // Fetch all auctions for supplier
   const fetchAuctions = async () => {
     if (!token) return;
     setLoading(true);
@@ -53,9 +62,11 @@ export default function SupplierDashboard() {
     setLoading(false);
   };
 
-  const selectAuction = (auction: any) => {
+  // Join auction + fetch items
+  const selectAuction = async (auction: any) => {
     setSelectedAuction(auction);
     socket.emit("join_auction", auction.id);
+
     setItemBids(
       auction.items.map((item: any) => ({
         itemId: item.id,
@@ -65,16 +76,35 @@ export default function SupplierDashboard() {
         rate: "",
       }))
     );
-    setRank(null);
-    setTotalValue(0);
+
+    // Fetch latest rank from backend (persistent rank)
+    const res = await fetch("/api/auctions/bid", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ auctionId: auction.id, itemBids: [] }), // triggers fetch-only mode
+    });
+
+    try {
+      const data = await res.json();
+      if (data.rankings) {
+        setRankings(data.rankings);
+        const myRank = data.rankings.find(
+          (r: any) => r.supplierId === getDecodedUser()?.userId
+        );
+        setRank(myRank ? myRank.rank : null);
+      }
+    } catch {}
   };
 
+  // Handle rate input change
   const handleRateChange = (index: number, rate: string) => {
     const updated = [...itemBids];
     updated[index].rate = rate;
     setItemBids(updated);
 
-    // auto-calc total
     const total = updated.reduce((sum, item) => {
       const q = parseFloat(item.quantity) || 0;
       const r = parseFloat(item.rate) || 0;
@@ -83,6 +113,7 @@ export default function SupplierDashboard() {
     setTotalValue(total);
   };
 
+  // Submit bid + broadcast live ranking
   const submitBid = async () => {
     if (!selectedAuction) return alert("Select an auction first!");
     const res = await fetch("/api/auctions/bid", {
@@ -103,9 +134,11 @@ export default function SupplierDashboard() {
     const data = await res.json();
 
     if (res.ok) {
-      alert("Bid submitted successfully!");
       setRank(data.rank);
-      socket.emit("update_ranking", selectedAuction.id, data.rankings);
+      socket.emit("update_ranking", selectedAuction.id, {
+        auctionId: selectedAuction.id,
+        rankings: data.rankings,
+      });
     } else {
       alert(data.error || "Bid submission failed");
     }
@@ -114,6 +147,13 @@ export default function SupplierDashboard() {
   useEffect(() => {
     fetchAuctions();
   }, []);
+
+  // Periodic fallback refresh (every 10s)
+  useEffect(() => {
+    if (!selectedAuction) return;
+    const interval = setInterval(fetchAuctions, 10000);
+    return () => clearInterval(interval);
+  }, [selectedAuction]);
 
   return (
     <div className="min-h-screen">
@@ -179,9 +219,7 @@ export default function SupplierDashboard() {
                       type="number"
                       value={item.rate}
                       placeholder="Rate"
-                      onChange={(e) =>
-                        handleRateChange(i, e.target.value)
-                      }
+                      onChange={(e) => handleRateChange(i, e.target.value)}
                       className="w-24 p-1 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
                     />
                   </td>
