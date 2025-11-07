@@ -1,56 +1,61 @@
+// File: src/app/supplier/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import io from "socket.io-client";
+import { useEffect, useRef, useState } from "react";
+import io, { Socket } from "socket.io-client";
 
 const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000";
-let socket: any;
 
 export default function SupplierDashboard() {
   const [auctions, setAuctions] = useState<any[]>([]);
-  const [selectedAuction, setSelectedAuction] = useState<any>(null);
+  const [selectedAuction, setSelectedAuction] = useState<any | null>(null);
   const [itemBids, setItemBids] = useState<any[]>([]);
-  const [rank, setRank] = useState<number | null>(null);
   const [totalValue, setTotalValue] = useState(0);
+  const [rank, setRank] = useState<number | null>(null);
   const [rankings, setRankings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const socketRef = useRef<Socket | null>(null);
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // Helper to decode JWT user info
   const getDecodedUser = () => {
     try {
       if (!token) return null;
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload;
+      return JSON.parse(atob(token.split(".")[1]));
     } catch {
       return null;
     }
   };
 
-  // Initialize Socket.io
+  // initialize socket once
   useEffect(() => {
-    socket = io(socketUrl, { transports: ["websocket"] });
+    if (!socketRef.current) {
+      socketRef.current = io(socketUrl, { transports: ["websocket"] });
 
-    socket.on("connect", () => console.log("🟢 Connected to Socket.io"));
-    socket.on("disconnect", () => console.log("🔴 Disconnected from Socket.io"));
+      socketRef.current.on("connect", () => console.log("Socket connected:", socketRef.current?.id));
+      socketRef.current.on("disconnect", () => console.log("Socket disconnected"));
+      // receive ranking_update for any auction; we'll pick the right one if it matches selectedAuction
+      socketRef.current.on("ranking_update", (payload: any) => {
+        if (!payload || !payload.auctionId) return;
+        // update local rankings if matches selected auction
+        if (selectedAuction && payload.auctionId === selectedAuction.id) {
+          setRankings(payload.rankings || []);
+          const myRank = (payload.rankings || []).find((r: any) => r.supplierId === getDecodedUser()?.userId);
+          setRank(myRank ? myRank.rank : null);
+        }
+      });
+    }
 
-    // 🔁 Receive live ranking updates from backend
-    socket.on("ranking_update", (data: any) => {
-      if (selectedAuction && data.auctionId === selectedAuction.id) {
-        setRankings(data.rankings);
-        const myRank = data.rankings.find(
-          (r: any) => r.supplierId === getDecodedUser()?.userId
-        );
-        setRank(myRank ? myRank.rank : null);
-      }
-    });
+    return () => {
+      // don't disconnect on unmount to keep socket alive across navigations if you want;
+      // but to avoid resource leaks on full page unload, disconnect:
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once
 
-    return () => socket.disconnect();
-  }, [selectedAuction]);
-
-  // Fetch all auctions for supplier
+  // fetch auctions
   const fetchAuctions = async () => {
     if (!token) return;
     setLoading(true);
@@ -62,199 +67,213 @@ export default function SupplierDashboard() {
     setLoading(false);
   };
 
-  // Join auction + fetch items
+  // select auction: join room, initialize item bids, fetch current rankings so rank persists after refresh
   const selectAuction = async (auction: any) => {
     setSelectedAuction(auction);
-    socket.emit("join_auction", auction.id);
+    setRank(null);
+    setRankings([]);
+    setTotalValue(0);
 
-    setItemBids(
-      auction.items.map((item: any) => ({
-        itemId: item.id,
-        name: item.name,
-        quantity: item.quantity,
-        uom: item.uom,
-        rate: "",
-      }))
-    );
+    // join room
+    socketRef.current?.emit("join_auction", auction.id);
 
-    // Fetch latest rank from backend (persistent rank)
+    // prepare itemBids scaffold
+    const scaffold = auction.items.map((it: any) => ({
+      itemId: it.id,
+      name: it.name,
+      quantity: it.quantity,
+      uom: it.uom,
+      rate: "",
+    }));
+    setItemBids(scaffold);
+
+    // fetch current rankings from backend (call bid POST with empty itemBids to fetch rankings)
     const res = await fetch("/api/auctions/bid", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ auctionId: auction.id, itemBids: [] }), // triggers fetch-only mode
+      body: JSON.stringify({ auctionId: auction.id, itemBids: [] }),
     });
-
-    try {
-      const data = await res.json();
-      if (data.rankings) {
-        setRankings(data.rankings);
-        const myRank = data.rankings.find(
-          (r: any) => r.supplierId === getDecodedUser()?.userId
-        );
-        setRank(myRank ? myRank.rank : null);
-      }
-    } catch {}
+    const json = await res.json().catch(() => null);
+    if (json?.rankings) {
+      setRankings(json.rankings);
+      const myRank = json.rankings.find((r: any) => r.supplierId === getDecodedUser()?.userId);
+      setRank(myRank ? myRank.rank : null);
+    } else {
+      setRank(null);
+    }
   };
 
-  // Handle rate input change
+  // handle per-item rate change
   const handleRateChange = (index: number, rate: string) => {
-    const updated = [...itemBids];
-    updated[index].rate = rate;
-    setItemBids(updated);
-
-    const total = updated.reduce((sum, item) => {
-      const q = parseFloat(item.quantity) || 0;
-      const r = parseFloat(item.rate) || 0;
+    const copy = [...itemBids];
+    copy[index].rate = rate;
+    setItemBids(copy);
+    const total = copy.reduce((sum, it) => {
+      const q = parseFloat(it.quantity) || 0;
+      const r = parseFloat(it.rate) || 0;
       return sum + q * r;
     }, 0);
     setTotalValue(total);
   };
 
-  // Submit bid + broadcast live ranking
+  // submit item-wise bids -> backend computes total, upserts and emits ranking update
   const submitBid = async () => {
-    if (!selectedAuction) return alert("Select an auction first!");
+    if (!selectedAuction) return alert("Select an auction first");
+    if (!token) return alert("Not authorized");
+
+    const payload = {
+      auctionId: selectedAuction.id,
+      itemBids: itemBids.map((i) => ({ itemId: i.itemId, rate: parseFloat(i.rate || 0) })),
+    };
+
     const res = await fetch("/api/auctions/bid", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        auctionId: selectedAuction.id,
-        itemBids: itemBids.map((i) => ({
-          itemId: i.itemId,
-          rate: parseFloat(i.rate || 0),
-        })),
-      }),
+      body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    const json = await res.json().catch(() => null);
+    if (res.ok && json) {
+      // update local rank and rankings (server already emitted - but we also update local immediately)
+      if (json.rankings) {
+        setRankings(json.rankings);
+        const myRank = json.rankings.find((r: any) => r.supplierId === getDecodedUser()?.userId);
+        setRank(myRank ? myRank.rank : null);
+      } else if (typeof json.rank === "number") {
+        setRank(json.rank);
+      }
 
-    if (res.ok) {
-      setRank(data.rank);
-      socket.emit("update_ranking", selectedAuction.id, {
-        auctionId: selectedAuction.id,
-        rankings: data.rankings,
-      });
+      // server emits ranking_update to room; still safe to emit here to ensure propagation
+      socketRef.current?.emit("update_ranking", selectedAuction.id, { auctionId: selectedAuction.id, rankings: json.rankings || [] });
+
+      alert("Bid submitted");
     } else {
-      alert(data.error || "Bid submission failed");
+      alert(json?.error || "Bid failed");
     }
   };
 
+  // fallback polling to refresh auctions list & rankings (every 10s)
   useEffect(() => {
     fetchAuctions();
+    const iv = setInterval(fetchAuctions, 10000);
+    return () => clearInterval(iv);
   }, []);
 
-  // Periodic fallback refresh (every 10s)
-  useEffect(() => {
-    if (!selectedAuction) return;
-    const interval = setInterval(fetchAuctions, 10000);
-    return () => clearInterval(interval);
-  }, [selectedAuction]);
+  // sticky rank bar UI (always at top of the supplier page)
+  const RankBar = () => (
+    <div className="fixed top-16 left-0 right-0 z-50 flex justify-center pointer-events-none">
+      <div className="pointer-events-auto bg-[#112240] border border-[#2EE59D] text-[#EAEAEA] px-4 py-2 rounded-b-lg shadow-lg">
+        <span className="font-semibold text-sm mr-3">Your Current Rank</span>
+        {selectedAuction ? (
+          rank ? (
+            <span className="text-[#FFD700] font-bold text-lg">{rank === 1 ? "L1 (Lowest)" : `L${rank}`}</span>
+          ) : (
+            <span className="text-[#EAEAEA]/80">No bids yet</span>
+          )
+        ) : (
+          <span className="text-[#EAEAEA]/80">Select an auction</span>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen">
-      <h2 className="text-3xl font-bold text-[#2EE59D] mb-6">
-        Supplier Dashboard
-      </h2>
+    <div className="min-h-screen pb-20">
+      {/* Sticky rank bar */}
+      <RankBar />
 
-      {loading ? (
-        <p className="text-[#EAEAEA]">Loading live auctions...</p>
-      ) : auctions.length === 0 ? (
-        <p className="text-[#EAEAEA]">No live auctions available right now.</p>
-      ) : (
-        <div className="grid gap-4 mb-6">
-          {auctions.map((auction) => (
-            <div
-              key={auction.id}
-              onClick={() => selectAuction(auction)}
-              className={`cursor-pointer p-4 rounded-xl border ${
-                selectedAuction?.id === auction.id
-                  ? "border-[#FFD700] bg-[#112240]"
-                  : "border-[#2EE59D] bg-[#0A192F]"
-              } hover:shadow-lg transition`}
-            >
-              <h4 className="text-lg font-bold text-[#2EE59D]">
-                {auction.title}
-              </h4>
-              <p className="text-sm text-[#EAEAEA]/80">
-                Ends: {new Date(auction.endsAt).toLocaleString()}
-              </p>
-              <p className="text-sm text-[#FFD700] mt-2">
-                Items: {auction.items.length}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="pt-28"> {/* push down content to make space for sticky bar */}
+        <h2 className="text-3xl font-bold text-[#2EE59D] mb-6">Supplier Dashboard</h2>
 
-      {selectedAuction && (
-        <div className="bg-[#112240] p-6 rounded-2xl shadow-lg">
-          <h3 className="text-2xl font-bold text-[#FFD700] mb-4">
-            {selectedAuction.title}
-          </h3>
-          <p className="text-[#EAEAEA] mb-3">{selectedAuction.description}</p>
-
-          <table className="w-full mb-4 border border-[#2EE59D] rounded-xl text-left">
-            <thead>
-              <tr className="bg-[#0A192F] text-[#2EE59D]">
-                <th className="p-2">Item</th>
-                <th className="p-2">Qty</th>
-                <th className="p-2">UOM</th>
-                <th className="p-2">Your Rate</th>
-                <th className="p-2">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {itemBids.map((item, i) => (
-                <tr key={item.itemId} className="border-t border-[#2EE59D]/30">
-                  <td className="p-2 text-[#EAEAEA]">{item.name}</td>
-                  <td className="p-2 text-[#EAEAEA]/80">{item.quantity}</td>
-                  <td className="p-2 text-[#EAEAEA]/80">{item.uom}</td>
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      value={item.rate}
-                      placeholder="Rate"
-                      onChange={(e) => handleRateChange(i, e.target.value)}
-                      className="w-24 p-1 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
-                    />
-                  </td>
-                  <td className="p-2 text-[#FFD700]">
-                    {(
-                      (parseFloat(item.quantity) || 0) *
-                      (parseFloat(item.rate) || 0)
-                    ).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="text-right text-[#FFD700] font-semibold mb-4">
-            Total Bid Value: ₹{totalValue.toFixed(2)}
+        {loading ? (
+          <p className="text-[#EAEAEA]">Loading live auctions...</p>
+        ) : auctions.length === 0 ? (
+          <p className="text-[#EAEAEA]">No live auctions available right now.</p>
+        ) : (
+          <div className="grid gap-4 mb-6">
+            {auctions.map((auction) => (
+              <div
+                key={auction.id}
+                onClick={() => selectAuction(auction)}
+                className={`cursor-pointer p-4 rounded-xl border ${
+                  selectedAuction?.id === auction.id ? "border-[#FFD700] bg-[#112240]" : "border-[#2EE59D] bg-[#0A192F]"
+                } hover:shadow-lg transition`}
+              >
+                <h4 className="text-lg font-bold text-[#2EE59D]">{auction.title}</h4>
+                <p className="text-sm text-[#EAEAEA]/80">Ends: {new Date(auction.endsAt).toLocaleString()}</p>
+                <p className="text-sm text-[#FFD700] mt-2">Items: {auction.items.length}</p>
+              </div>
+            ))}
           </div>
+        )}
 
-          <button
-            onClick={submitBid}
-            className="bg-[#2EE59D] text-[#0A192F] px-6 py-2 rounded-xl font-semibold hover:bg-[#24c68a] transition"
-          >
-            Submit Bid
-          </button>
+        {selectedAuction && (
+          <div className="bg-[#112240] p-6 rounded-2xl shadow-lg">
+            <h3 className="text-2xl font-bold text-[#FFD700] mb-4">{selectedAuction.title}</h3>
+            <p className="text-[#EAEAEA] mb-3">{selectedAuction.description}</p>
 
-          {rank && (
-            <div className="mt-6 text-xl font-semibold text-[#2EE59D]">
-              🏅 Your Current Rank:{" "}
-              <span className="text-[#FFD700]">
-                {rank === 1 ? "L1 (Lowest)" : `L${rank}`}
-              </span>
+            <table className="w-full mb-4 border border-[#2EE59D] rounded-xl text-left">
+              <thead>
+                <tr className="bg-[#0A192F] text-[#2EE59D]">
+                  <th className="p-2">Item</th>
+                  <th className="p-2">Qty</th>
+                  <th className="p-2">UOM</th>
+                  <th className="p-2">Your Rate</th>
+                  <th className="p-2">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemBids.map((item, i) => (
+                  <tr key={item.itemId} className="border-t border-[#2EE59D]/30">
+                    <td className="p-2 text-[#EAEAEA]">{item.name}</td>
+                    <td className="p-2 text-[#EAEAEA]/80">{item.quantity}</td>
+                    <td className="p-2 text-[#EAEAEA]/80">{item.uom}</td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        value={item.rate}
+                        placeholder="Rate"
+                        onChange={(e) => handleRateChange(i, e.target.value)}
+                        className="w-24 p-1 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
+                      />
+                    </td>
+                    <td className="p-2 text-[#FFD700]">
+                      {((parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0)).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="text-right text-[#FFD700] font-semibold mb-4">Total Bid Value: ₹{totalValue.toFixed(2)}</div>
+
+            <div className="flex gap-3">
+              <button onClick={submitBid} className="bg-[#2EE59D] text-[#0A192F] px-6 py-2 rounded-xl font-semibold hover:bg-[#24c68a] transition">Submit Bid</button>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Optionally show the full ranking list */}
+            {rankings.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold text-[#FFD700] mb-2">Live Rankings</h4>
+                <ul className="space-y-2">
+                  {rankings.map((r: any) => (
+                    <li key={r.supplierId} className={`flex justify-between p-2 rounded ${r.supplierId === getDecodedUser()?.userId ? "bg-[#2EE59D]/20 border border-[#2EE59D]" : "bg-[#0A192F]"}`}>
+                      <span className="text-[#EAEAEA]">Supplier {r.rank}</span>
+                      <span className="text-[#FFD700]">{r.rank === 1 ? "L1" : `L${r.rank}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
