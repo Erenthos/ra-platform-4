@@ -9,7 +9,7 @@ export default function BuyerDashboard() {
   const [newAuction, setNewAuction] = useState({
     title: "",
     description: "",
-    endsAt: "",
+    durationMinutes: "",
     items: [{ name: "", quantity: "", uom: "", basePrice: "" }],
   });
 
@@ -28,21 +28,62 @@ export default function BuyerDashboard() {
 
   const createAuction = async () => {
     if (!token) return alert("Not authorized");
+
+    if (!newAuction.title || !newAuction.durationMinutes || newAuction.items.length === 0) {
+      alert("Please fill all required fields");
+      return;
+    }
+
     const res = await fetch("/api/auctions/create", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(newAuction),
+      body: JSON.stringify({
+        title: newAuction.title,
+        description: newAuction.description,
+        durationMinutes: parseInt(newAuction.durationMinutes),
+        items: newAuction.items,
+      }),
     });
+
     const data = await res.json();
     if (res.ok) {
       alert("Auction created successfully!");
       setShowForm(false);
+      setNewAuction({
+        title: "",
+        description: "",
+        durationMinutes: "",
+        items: [{ name: "", quantity: "", uom: "", basePrice: "" }],
+      });
       fetchAuctions();
     } else {
       alert(data.error || "Failed to create auction");
+    }
+  };
+
+  const closeAuction = async (auctionId: string) => {
+    if (!token) return alert("Not authorized");
+    const confirmClose = confirm("Are you sure you want to close this auction?");
+    if (!confirmClose) return;
+
+    const res = await fetch("/api/auctions/close", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ auctionId }),
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert("Auction closed successfully!");
+      fetchAuctions();
+    } else {
+      alert(data.error || "Failed to close auction");
     }
   };
 
@@ -52,9 +93,7 @@ export default function BuyerDashboard() {
 
   return (
     <div className="min-h-screen">
-      <h2 className="text-3xl font-bold text-[#2EE59D] mb-6">
-        Buyer Dashboard
-      </h2>
+      <h2 className="text-3xl font-bold text-[#2EE59D] mb-6">Buyer Dashboard</h2>
 
       <button
         onClick={() => setShowForm(!showForm)}
@@ -68,12 +107,16 @@ export default function BuyerDashboard() {
           <h3 className="text-xl mb-4 font-semibold text-[#FFD700]">
             New Auction Details
           </h3>
+
           <input
             type="text"
             placeholder="Auction Title"
             className="block w-full mb-3 p-2 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
-            onChange={(e) => setNewAuction({ ...newAuction, title: e.target.value })}
+            onChange={(e) =>
+              setNewAuction({ ...newAuction, title: e.target.value })
+            }
           />
+
           <textarea
             placeholder="Description"
             className="block w-full mb-3 p-2 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
@@ -81,13 +124,23 @@ export default function BuyerDashboard() {
               setNewAuction({ ...newAuction, description: e.target.value })
             }
           />
+
           <input
-            type="datetime-local"
+            type="number"
+            placeholder="Auction Duration (in minutes)"
             className="block w-full mb-3 p-2 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
-            onChange={(e) => setNewAuction({ ...newAuction, endsAt: e.target.value })}
+            onChange={(e) =>
+              setNewAuction({
+                ...newAuction,
+                durationMinutes: e.target.value,
+              })
+            }
           />
 
-          <h4 className="mt-4 mb-2 font-semibold text-[#EAEAEA]">Auction Items</h4>
+          <h4 className="mt-4 mb-2 font-semibold text-[#EAEAEA]">
+            Auction Items
+          </h4>
+
           {newAuction.items.map((item, idx) => (
             <div key={idx} className="grid grid-cols-4 gap-2 mb-2">
               <input
@@ -135,7 +188,10 @@ export default function BuyerDashboard() {
             onClick={() =>
               setNewAuction({
                 ...newAuction,
-                items: [...newAuction.items, { name: "", quantity: "", uom: "", basePrice: "" }],
+                items: [
+                  ...newAuction.items,
+                  { name: "", quantity: "", uom: "", basePrice: "" },
+                ],
               })
             }
             className="mt-2 text-sm text-[#2EE59D] hover:text-[#24c68a]"
@@ -180,6 +236,19 @@ export default function BuyerDashboard() {
                 <p className="mt-3 text-sm text-[#FFD700]">
                   Items: {auction.items.length}
                 </p>
+
+                {new Date(auction.endsAt) > new Date() ? (
+                  <button
+                    onClick={() => closeAuction(auction.id)}
+                    className="mt-3 px-4 py-2 bg-[#FF6B6B] text-white rounded-lg hover:bg-[#e85b5b] transition"
+                  >
+                    Close Auction
+                  </button>
+                ) : (
+                  <p className="mt-3 text-sm text-[#FF6B6B]/80">
+                    Auction Closed
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -188,4 +257,3 @@ export default function BuyerDashboard() {
     </div>
   );
 }
-
