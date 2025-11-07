@@ -1,1 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 🌈 Global Theme Overrides */
+html,
+body {
+  background-color: #0a192f;
+  color: #eaeaea;
+  font-family: "Inter", sans-serif;
+  scroll-behavior: smooth;
+}
+
+button {
+  transition: all 0.2s ease-in-out;
+}
+
+input,
+textarea {
+  outline: none;
+}
+
+input:focus,
+textarea:focus {
+  border-color: #2ee59d;
+  box-shadow: 0 0 6px #2ee59d80;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a192f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2ee59d;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #24c68a;
+}
+
+/* ✨ Utility Enhancements */
+.text-glow {
+  text-shadow: 0 0 8px #2ee59d, 0 0 16px #2ee59d;
+}
+
+.btn-primary {
+  background-color: #2ee59d;
+  color: #0a192f;
+  border-radius: 12px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: #24c68a;
+}
 
