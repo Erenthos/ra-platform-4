@@ -22,20 +22,19 @@ export async function POST(req: Request) {
     const now = new Date();
     const endsAt = new Date(now.getTime() + duration * 60 * 1000);
 
-    // ✅ Fix: add basePrice default = 0
+    // ✅ Removed startsAt since schema doesn’t have it
     const auction = await prisma.auction.create({
       data: {
         title,
         description,
         buyerId: decoded.userId,
-        startsAt: now,
         endsAt,
         items: {
           create: items.map((i: any) => ({
             name: i.name,
             quantity: parseFloat(i.quantity) || 0,
             uom: i.uom || "",
-            basePrice: 0, // ✅ added to satisfy Prisma model
+            basePrice: 0,
           })),
         },
       },
