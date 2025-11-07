@@ -1,30 +1,39 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function Navbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [role, setRole] = useState<"BUYER" | "SUPPLIER" | null>(null);
 
+  // 🔄 Refresh navbar state when route changes
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
       try {
         const decoded = JSON.parse(atob(token.split(".")[1]));
-        setIsLoggedIn(true);
-        setRole(decoded.role);
+        if (decoded && decoded.role) {
+          setIsLoggedIn(true);
+          setRole(decoded.role);
+        }
       } catch {
         setIsLoggedIn(false);
+        setRole(null);
       }
+    } else {
+      setIsLoggedIn(false);
+      setRole(null);
     }
-  }, []);
+  }, [pathname]); // ✅ re-run when route changes (fixes Supplier issue)
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     alert("You have been logged out.");
     setIsLoggedIn(false);
+    setRole(null);
     router.push("/");
   };
 
