@@ -2,62 +2,261 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 🌈 Global Theme Overrides */
+/* =======================================
+   GLOBAL RESET + BASE STYLING
+   ======================================= */
+
 html,
 body {
-  background-color: #0a192f;
-  color: #eaeaea;
-  font-family: "Inter", sans-serif;
+  padding: 0;
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  scroll-behavior: smooth;
+  transition: background-color 0.5s ease, color 0.5s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Smooth scroll for all sections */
+html {
   scroll-behavior: smooth;
 }
 
-button {
-  transition: all 0.2s ease-in-out;
+/* Subtle scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--card);
 }
 
+/* =======================================
+   THEME SYSTEM
+   ======================================= */
+
+:root {
+  --bg: #0a192f;
+  --card: #112240;
+  --text: #eaeaea;
+  --primary: #2ee59d;
+  --accent: #ffd700;
+  --input: #0a192f;
+  --shadow: 0 0 10px rgba(46, 229, 157, 0.3);
+}
+
+/* 🟢 NEON THEME (Default) */
+body.theme-neon {
+  --bg: #0a192f;
+  --card: #112240;
+  --text: #eaeaea;
+  --primary: #2ee59d;
+  --accent: #ffd700;
+  --input: #0a192f;
+  --shadow: 0 0 15px rgba(46, 229, 157, 0.4);
+}
+
+/* ⚫ DARK THEME */
+body.theme-dark {
+  --bg: #0d0d0d;
+  --card: #1a1a1a;
+  --text: #ffffff;
+  --primary: #4dd0e1;
+  --accent: #ffb300;
+  --input: #111111;
+  --shadow: 0 0 12px rgba(77, 208, 225, 0.4);
+}
+
+/* ⚪ LIGHT THEME */
+body.theme-light {
+  --bg: #f8f9fa;
+  --card: #ffffff;
+  --text: #222222;
+  --primary: #007bff;
+  --accent: #17a2b8;
+  --input: #f1f1f1;
+  --shadow: 0 0 8px rgba(0, 123, 255, 0.3);
+}
+
+/* =======================================
+   GLOBAL ELEMENT STYLING
+   ======================================= */
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Themed utility classes */
+.bg-bg {
+  background-color: var(--bg);
+}
+.bg-card {
+  background-color: var(--card);
+}
+.bg-primary {
+  background-color: var(--primary);
+}
+.bg-accent {
+  background-color: var(--accent);
+}
+.bg-input {
+  background-color: var(--input);
+}
+
+.text-text {
+  color: var(--text);
+}
+.text-primary {
+  color: var(--primary);
+}
+.text-accent {
+  color: var(--accent);
+}
+.border-primary {
+  border-color: var(--primary);
+}
+
+/* =======================================
+   BUTTON STYLING
+   ======================================= */
+
+button {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button.glow {
+  box-shadow: var(--shadow);
+}
+
+/* =======================================
+   INPUT + FORM STYLING
+   ======================================= */
+
 input,
-textarea {
+textarea,
+select {
+  border-radius: 8px;
   outline: none;
+  transition: all 0.3s ease;
 }
 
 input:focus,
-textarea:focus {
-  border-color: #2ee59d;
-  box-shadow: 0 0 6px #2ee59d80;
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
 }
 
-::-webkit-scrollbar {
-  width: 8px;
+/* =======================================
+   CARD STYLING
+   ======================================= */
+
+.card {
+  background-color: var(--card);
+  border: 1px solid var(--primary);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease-in-out;
 }
 
-::-webkit-scrollbar-track {
-  background: #0a192f;
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 20px var(--primary);
 }
 
-::-webkit-scrollbar-thumb {
-  background: #2ee59d;
-  border-radius: 10px;
+/* =======================================
+   TYPOGRAPHY & TEXT
+   ======================================= */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--primary);
+  font-weight: 700;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #24c68a;
+p {
+  color: var(--text);
+  line-height: 1.6;
 }
 
-/* ✨ Utility Enhancements */
-.text-glow {
-  text-shadow: 0 0 8px #2ee59d, 0 0 16px #2ee59d;
+/* =======================================
+   TABLES
+   ======================================= */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.btn-primary {
-  background-color: #2ee59d;
-  color: #0a192f;
-  border-radius: 12px;
-  padding: 0.5rem 1rem;
-  font-weight: 600;
-  transition: all 0.2s;
+th,
+td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--primary);
 }
 
-.btn-primary:hover {
-  background-color: #24c68a;
+th {
+  background-color: var(--card);
+  color: var(--accent);
+  font-weight: bold;
 }
 
+tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* =======================================
+   TRANSITIONS & EFFECTS
+   ======================================= */
+
+.theme-transition {
+  transition: all 0.4s ease-in-out;
+}
+
+.fade-in {
+  opacity: 0;
+  animation: fadeIn 0.5s forwards;
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+/* =======================================
+   RESPONSIVENESS
+   ======================================= */
+
+@media (max-width: 768px) {
+  .card {
+    padding: 1rem;
+  }
+  th,
+  td {
+    padding: 0.5rem;
+  }
+}
