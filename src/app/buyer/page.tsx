@@ -13,7 +13,7 @@ export default function BuyerDashboard() {
   const [rankings, setRankings] = useState<any[]>([]);
   const [showRankings, setShowRankings] = useState(false);
 
-  // new auction state
+  // New auction creation state
   const [newAuction, setNewAuction] = useState({
     title: "",
     description: "",
@@ -21,22 +21,26 @@ export default function BuyerDashboard() {
     items: [{ name: "", quantity: "", uom: "" }],
   });
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // connect socket
+  // Socket.io connection
   useEffect(() => {
     socket = io(socketUrl, { transports: ["websocket"] });
+
     socket.on("connect", () => console.log("🟢 Connected to Socket.io"));
     socket.on("disconnect", () => console.log("🔴 Disconnected"));
+
     socket.on("ranking_update", (data: any) => {
       if (selectedAuction && data.auctionId === selectedAuction.id) {
         setRankings(data.rankings || []);
       }
     });
+
     return () => socket.disconnect();
   }, [selectedAuction]);
 
-  // fetch auctions
+  // Fetch all auctions for buyer
   const fetchAuctions = async () => {
     if (!token) return;
     setLoading(true);
@@ -52,7 +56,7 @@ export default function BuyerDashboard() {
     fetchAuctions();
   }, []);
 
-  // create new auction
+  // Handle auction creation
   const handleCreateAuction = async () => {
     if (!newAuction.title || newAuction.items.some((i) => !i.name)) {
       alert("Please fill in title and item details");
@@ -74,7 +78,8 @@ export default function BuyerDashboard() {
       alert("Auction created successfully!");
       setAuctions((prev) => [data.auction, ...prev]);
       socket.emit("new_auction", data.auction); // broadcast to suppliers
-      // reset form
+
+      // Reset form
       setNewAuction({
         title: "",
         description: "",
@@ -86,7 +91,7 @@ export default function BuyerDashboard() {
     }
   };
 
-  // item form management
+  // Add a new item row
   const addItemRow = () => {
     setNewAuction({
       ...newAuction,
@@ -94,12 +99,18 @@ export default function BuyerDashboard() {
     });
   };
 
-  const handleItemChange = (i: number, key: string, value: string) => {
+  // Handle input change for auction items
+  const handleItemChange = (
+    i: number,
+    key: "name" | "quantity" | "uom",
+    value: string
+  ) => {
     const updated = [...newAuction.items];
     updated[i][key] = value;
     setNewAuction({ ...newAuction, items: updated });
   };
 
+  // View live rankings
   const viewRankings = async (auction: any) => {
     setSelectedAuction(auction);
     setShowRankings(true);
@@ -117,6 +128,7 @@ export default function BuyerDashboard() {
     if (data.rankings) setRankings(data.rankings);
   };
 
+  // Download auction summary
   const downloadSummary = async (auctionId: string) => {
     const res = await fetch(`/api/auctions/summary?auctionId=${auctionId}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -136,33 +148,48 @@ export default function BuyerDashboard() {
 
   return (
     <div className="min-h-screen">
-      <h2 className="text-3xl font-bold text-[#2EE59D] mb-4">Buyer Dashboard</h2>
+      <h2 className="text-3xl font-bold text-[#2EE59D] mb-4">
+        Buyer Dashboard
+      </h2>
 
-      {/* -------- Create New Auction Form -------- */}
-      <div className="bg-[#112240] p-6 rounded-2xl mb-8 border border-[#2EE59D]">
-        <h3 className="text-xl font-bold text-[#FFD700] mb-3">Create New Auction</h3>
+      {/* =============== Create New Auction =============== */}
+      <div className="bg-[#112240] p-6 rounded-2xl mb-8 border border-[#2EE59D] shadow-lg">
+        <h3 className="text-xl font-bold text-[#FFD700] mb-3">
+          Create New Auction
+        </h3>
 
         <div className="grid gap-3 mb-3">
           <input
             type="text"
             placeholder="Auction Title"
             value={newAuction.title}
-            onChange={(e) => setNewAuction({ ...newAuction, title: e.target.value })}
+            onChange={(e) =>
+              setNewAuction({ ...newAuction, title: e.target.value })
+            }
             className="p-2 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
           />
+
           <textarea
             placeholder="Description"
             value={newAuction.description}
-            onChange={(e) => setNewAuction({ ...newAuction, description: e.target.value })}
+            onChange={(e) =>
+              setNewAuction({ ...newAuction, description: e.target.value })
+            }
             className="p-2 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
           />
+
           <div className="flex gap-4 items-center">
             <label className="text-[#EAEAEA]">Duration (minutes):</label>
             <input
               type="number"
               min="1"
               value={newAuction.duration}
-              onChange={(e) => setNewAuction({ ...newAuction, duration: parseInt(e.target.value) })}
+              onChange={(e) =>
+                setNewAuction({
+                  ...newAuction,
+                  duration: parseInt(e.target.value),
+                })
+              }
               className="p-1 w-24 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
             />
           </div>
@@ -182,7 +209,9 @@ export default function BuyerDashboard() {
                 type="number"
                 placeholder="Qty"
                 value={item.quantity}
-                onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
+                onChange={(e) =>
+                  handleItemChange(idx, "quantity", e.target.value)
+                }
                 className="p-2 rounded bg-[#0A192F] border border-[#2EE59D] text-[#EAEAEA]"
               />
               <input
@@ -194,6 +223,7 @@ export default function BuyerDashboard() {
               />
             </div>
           ))}
+
           <button
             onClick={addItemRow}
             className="mt-2 w-fit bg-[#2EE59D] text-[#0A192F] px-4 py-1 rounded font-semibold hover:bg-[#24c68a] transition"
@@ -210,7 +240,7 @@ export default function BuyerDashboard() {
         </div>
       </div>
 
-      {/* -------- Existing Auctions -------- */}
+      {/* =============== List of Auctions =============== */}
       <h3 className="text-xl font-bold text-[#FFD700] mb-3">Your Auctions</h3>
       {loading ? (
         <p className="text-[#EAEAEA]">Loading auctions...</p>
@@ -219,8 +249,13 @@ export default function BuyerDashboard() {
       ) : (
         <div className="grid gap-4">
           {auctions.map((auction) => (
-            <div key={auction.id} className="bg-[#112240] p-4 rounded-xl border border-[#2EE59D]">
-              <h4 className="text-lg font-bold text-[#2EE59D]">{auction.title}</h4>
+            <div
+              key={auction.id}
+              className="bg-[#112240] p-4 rounded-xl border border-[#2EE59D]"
+            >
+              <h4 className="text-lg font-bold text-[#2EE59D]">
+                {auction.title}
+              </h4>
               <p className="text-[#EAEAEA]/80">{auction.description}</p>
               <p className="text-sm text-[#FFD700] mt-2">
                 Ends: {new Date(auction.endsAt).toLocaleString()}
@@ -246,9 +281,9 @@ export default function BuyerDashboard() {
         </div>
       )}
 
-      {/* -------- Rankings -------- */}
+      {/* =============== Rankings Modal =============== */}
       {showRankings && selectedAuction && (
-        <div className="mt-8 bg-[#0A192F] p-6 rounded-2xl border border-[#2EE59D]">
+        <div className="mt-8 bg-[#0A192F] p-6 rounded-2xl border border-[#2EE59D] shadow-lg">
           <h3 className="text-2xl font-bold text-[#FFD700] mb-4">
             Live Rankings for {selectedAuction.title}
           </h3>
@@ -266,12 +301,17 @@ export default function BuyerDashboard() {
               </thead>
               <tbody>
                 {rankings.map((r) => (
-                  <tr key={r.supplierId} className="border-t border-[#2EE59D]/30">
+                  <tr
+                    key={r.supplierId}
+                    className="border-t border-[#2EE59D]/30"
+                  >
                     <td className="p-2 text-[#FFD700] font-semibold">
                       {r.rank === 1 ? "L1" : `L${r.rank}`}
                     </td>
                     <td className="p-2 text-[#EAEAEA]">{r.supplierId}</td>
-                    <td className="p-2 text-[#EAEAEA]">{r.totalValue.toFixed(2)}</td>
+                    <td className="p-2 text-[#EAEAEA]">
+                      {r.totalValue.toFixed(2)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
